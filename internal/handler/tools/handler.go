@@ -365,6 +365,113 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		}
 		return mcp.NewToolResultText(string(respJSON)), nil
 	})
+
+	createAlertRuleTool := mcp.NewTool("signoz_create_alert_rule",
+		mcp.WithDescription("Create a new alert rule in SigNoz. The rule parameter must be a complete alert rule JSON object. Use signoz_get_alert to retrieve an existing rule as a template for the structure. Key fields: alert (name), alertType (METRIC_BASED_ALERT, LOGS_BASED_ALERT, TRACES_BASED_ALERT, EXCEPTIONS_BASED_ALERT), ruleType (threshold_rule, promql_rule), condition (with compositeQuery, op, target), labels (must include severity), preferredChannels, evalWindow, frequency."),
+		mcp.WithObject("rule", mcp.Required(), mcp.Description("Complete alert rule JSON object")),
+	)
+	s.AddTool(createAlertRuleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_create_alert_rule")
+
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid arguments payload type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+
+		ruleObj, ok := args["rule"].(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid rule parameter type", zap.Any("type", args["rule"]))
+			return mcp.NewToolResultError("rule parameter must be a JSON object"), nil
+		}
+
+		ruleJSON, err := json.Marshal(ruleObj)
+		if err != nil {
+			h.logger.Error("Failed to marshal rule object", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal rule object: " + err.Error()), nil
+		}
+
+		client := h.GetClient(ctx)
+		result, err := client.CreateAlertRule(ctx, ruleJSON)
+		if err != nil {
+			h.logger.Error("Failed to create alert rule", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	updateAlertRuleTool := mcp.NewTool("signoz_update_alert_rule",
+		mcp.WithDescription("Update an existing alert rule. Requires the rule ID and a complete alert rule JSON object representing the post-update state. Use signoz_get_alert to retrieve the current rule configuration first, modify it, then pass it here."),
+		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID to update")),
+		mcp.WithObject("rule", mcp.Required(), mcp.Description("Complete alert rule JSON object representing the post-update state")),
+	)
+	s.AddTool(updateAlertRuleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_update_alert_rule")
+
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid arguments payload type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+
+		ruleID, ok := args["ruleId"].(string)
+		if !ok {
+			h.logger.Warn("Invalid ruleId parameter type", zap.Any("type", args["ruleId"]))
+			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
+		}
+		if ruleID == "" {
+			h.logger.Warn("Empty ruleId parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" cannot be empty. Provide a valid alert rule ID`), nil
+		}
+
+		ruleObj, ok := args["rule"].(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid rule parameter type", zap.Any("type", args["rule"]))
+			return mcp.NewToolResultError("rule parameter must be a JSON object"), nil
+		}
+
+		ruleJSON, err := json.Marshal(ruleObj)
+		if err != nil {
+			h.logger.Error("Failed to marshal rule object", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal rule object: " + err.Error()), nil
+		}
+
+		client := h.GetClient(ctx)
+		err = client.UpdateAlertRule(ctx, ruleID, ruleJSON)
+		if err != nil {
+			h.logger.Error("Failed to update alert rule", zap.String("ruleId", ruleID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText("alert rule updated successfully"), nil
+	})
+
+	deleteAlertRuleTool := mcp.NewTool("signoz_delete_alert_rule",
+		mcp.WithDescription("Delete an alert rule by ID. This action is irreversible. Use signoz_list_alerts to find rule IDs."),
+		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID to delete")),
+	)
+	s.AddTool(deleteAlertRuleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ruleID, ok := req.Params.Arguments.(map[string]any)["ruleId"].(string)
+		if !ok {
+			h.logger.Warn("Invalid ruleId parameter type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
+		}
+		if ruleID == "" {
+			h.logger.Warn("Empty ruleId parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" cannot be empty. Provide a valid alert rule ID`), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_delete_alert_rule", zap.String("ruleId", ruleID))
+		client := h.GetClient(ctx)
+		err := client.DeleteAlertRule(ctx, ruleID)
+		if err != nil {
+			h.logger.Error("Failed to delete alert rule", zap.String("ruleId", ruleID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText("alert rule deleted"), nil
+	})
 }
 
 func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
@@ -552,6 +659,32 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 
 		return mcp.NewToolResultText("dashboard updated"), nil
+	})
+
+	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
+		mcp.WithDescription("Delete a dashboard by UUID. This action is irreversible. Use signoz_list_dashboards to find dashboard UUIDs."),
+		mcp.WithString("uuid", mcp.Required(), mcp.Description("Dashboard UUID to delete")),
+	)
+
+	s.AddTool(deleteDashboardTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		uuid, ok := req.Params.Arguments.(map[string]any)["uuid"].(string)
+		if !ok {
+			h.logger.Warn("Invalid uuid parameter type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError(`Parameter validation failed: "uuid" must be a string. Example: {"uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
+		}
+		if uuid == "" {
+			h.logger.Warn("Empty uuid parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "uuid" cannot be empty. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_delete_dashboard", zap.String("uuid", uuid))
+		client := h.GetClient(ctx)
+		err := client.DeleteDashboard(ctx, uuid)
+		if err != nil {
+			h.logger.Error("Failed to delete dashboard", zap.String("uuid", uuid), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText("dashboard deleted"), nil
 	})
 
 	// resources for create and update dashboard
@@ -925,8 +1058,13 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		data, ok := logViews["data"].([]any)
 		if !ok {
-			h.logger.Error("Invalid log views response format", zap.Any("data", logViews["data"]))
-			return mcp.NewToolResultError("invalid response format: expected data array"), nil
+			// data may be null when no views exist
+			if logViews["data"] == nil {
+				data = []any{}
+			} else {
+				h.logger.Error("Invalid log views response format", zap.Any("data", logViews["data"]))
+				return mcp.NewToolResultError("invalid response format: expected data array"), nil
+			}
 		}
 
 		total := len(data)
@@ -1490,4 +1628,1634 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(result)), nil
 	})
 
+}
+
+func (h *Handler) RegisterSavedViewHandlers(s *server.MCPServer) {
+	createSavedViewTool := mcp.NewTool(
+		"signoz_create_saved_view",
+		mcp.WithDescription(
+			"Create a new saved view for logs or traces explorer. Saved views store filter/query configurations for quick reuse. "+
+				"Use signoz_get_log_view on an existing view to understand the compositeQuery structure before creating a new one.",
+		),
+		mcp.WithInputSchema[types.SavedView](),
+	)
+
+	s.AddTool(createSavedViewTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		rawConfig, ok := req.Params.Arguments.(map[string]any)
+
+		if !ok || len(rawConfig) == 0 {
+			h.logger.Warn("Received empty or invalid arguments map.")
+			return mcp.NewToolResultError(`Parameter validation failed: The saved view configuration object is empty or improperly formatted.`), nil
+		}
+
+		configJSON, err := json.Marshal(rawConfig)
+		if err != nil {
+			h.logger.Error("Failed to unmarshal raw configuration", zap.Error(err))
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Could not decode raw configuration. Error: %s", err.Error()),
+			), nil
+		}
+
+		var savedViewConfig types.SavedView
+		if err := json.Unmarshal(configJSON, &savedViewConfig); err != nil {
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Parameter decoding error: The provided JSON structure for the saved view configuration is invalid. Error details: %s", err.Error()),
+			), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_create_saved_view", zap.String("name", savedViewConfig.Name))
+		client := h.GetClient(ctx)
+		data, err := client.CreateSavedView(ctx, savedViewConfig)
+
+		if err != nil {
+			h.logger.Error("Failed to create saved view in SigNoz", zap.Error(err))
+			return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		}
+
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	updateSavedViewTool := mcp.NewTool(
+		"signoz_update_saved_view",
+		mcp.WithDescription(
+			"Update an existing saved view. Requires the complete post-update configuration. "+
+				"Use signoz_get_log_view to retrieve the current configuration first.",
+		),
+		mcp.WithInputSchema[types.UpdateSavedViewInput](),
+	)
+
+	s.AddTool(updateSavedViewTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		rawConfig, ok := req.Params.Arguments.(map[string]any)
+
+		if !ok || len(rawConfig) == 0 {
+			h.logger.Warn("Received empty or invalid arguments map.")
+			return mcp.NewToolResultError(`Parameter validation failed: The saved view configuration object is empty or improperly formatted.`), nil
+		}
+
+		configJSON, err := json.Marshal(rawConfig)
+		if err != nil {
+			h.logger.Error("Failed to unmarshal raw configuration", zap.Error(err))
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Could not decode raw configuration. Error: %s", err.Error()),
+			), nil
+		}
+
+		var updateSavedViewConfig types.UpdateSavedViewInput
+		if err := json.Unmarshal(configJSON, &updateSavedViewConfig); err != nil {
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Parameter decoding error: The provided JSON structure for the saved view configuration is invalid. Error details: %s", err.Error()),
+			), nil
+		}
+
+		if updateSavedViewConfig.ViewID == "" {
+			h.logger.Warn("Empty viewId parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid saved view ID. Use signoz_list_log_views tool to see available views.`), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_update_saved_view", zap.String("viewId", updateSavedViewConfig.ViewID))
+		client := h.GetClient(ctx)
+		data, err := client.UpdateSavedView(ctx, updateSavedViewConfig.ViewID, updateSavedViewConfig.SavedView)
+
+		if err != nil {
+			h.logger.Error("Failed to update saved view in SigNoz", zap.Error(err))
+			return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		}
+
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	deleteSavedViewTool := mcp.NewTool("signoz_delete_saved_view",
+		mcp.WithDescription("Delete a saved view by ID. This action is irreversible. Use signoz_list_log_views to find view IDs."),
+		mcp.WithString("viewId", mcp.Required(), mcp.Description("Saved view ID to delete")),
+	)
+
+	s.AddTool(deleteSavedViewTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		viewID, ok := req.Params.Arguments.(map[string]any)["viewId"].(string)
+		if !ok {
+			h.logger.Warn("Invalid viewId parameter type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError(`Parameter validation failed: "viewId" must be a string. Example: {"viewId": "view-uuid-123"}`), nil
+		}
+		if viewID == "" {
+			h.logger.Warn("Empty viewId parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid saved view ID. Use signoz_list_log_views tool to see available views.`), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_delete_saved_view", zap.String("viewId", viewID))
+		client := h.GetClient(ctx)
+		err := client.DeleteSavedView(ctx, viewID)
+		if err != nil {
+			h.logger.Error("Failed to delete saved view", zap.String("viewId", viewID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText("saved view deleted"), nil
+	})
+}
+
+func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
+	h.logger.Debug("Registering notification channel handlers")
+
+	listChannelsTool := mcp.NewTool("signoz_list_notification_channels",
+		mcp.WithDescription("List all notification channels configured in SigNoz. Returns channel names, types (slack, email, pagerduty, webhook, msteams, opsgenie, telegram, etc.), and IDs. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific channel, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
+		mcp.WithString("limit", mcp.Description("Maximum number of channels to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
+	)
+
+	s.AddTool(listChannelsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_notification_channels")
+		limit, offset := paginate.ParseParams(req.Params.Arguments)
+
+		client := h.GetClient(ctx)
+		result, err := client.ListNotificationChannels(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list notification channels", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		var channels map[string]any
+		if err := json.Unmarshal(result, &channels); err != nil {
+			h.logger.Error("Failed to parse notification channels response", zap.Error(err))
+			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+		}
+
+		data, ok := channels["data"].([]any)
+		if !ok {
+			h.logger.Error("Invalid notification channels response format", zap.Any("data", channels["data"]))
+			return mcp.NewToolResultError("invalid response format: expected data array"), nil
+		}
+
+		total := len(data)
+		pagedData := paginate.Array(data, offset, limit)
+
+		resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
+		if err != nil {
+			h.logger.Error("Failed to wrap notification channels with pagination", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(resultJSON)), nil
+	})
+
+	getChannelTool := mcp.NewTool("signoz_get_notification_channel",
+		mcp.WithDescription("Get details of a specific notification channel by ID. Returns the full channel configuration including the receiver settings."),
+		mcp.WithString("channelId", mcp.Required(), mcp.Description("Notification channel ID")),
+	)
+
+	s.AddTool(getChannelTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		channelID, ok := req.Params.Arguments.(map[string]any)["channelId"].(string)
+		if !ok {
+			h.logger.Warn("Invalid channelId parameter type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError(`Parameter validation failed: "channelId" must be a string. Example: {"channelId": "channel-uuid-123"}`), nil
+		}
+		if channelID == "" {
+			h.logger.Warn("Empty channelId parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "channelId" cannot be empty. Provide a valid notification channel ID. Use signoz_list_notification_channels tool to see available channels.`), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_get_notification_channel", zap.String("channelId", channelID))
+		client := h.GetClient(ctx)
+		data, err := client.GetNotificationChannel(ctx, channelID)
+		if err != nil {
+			h.logger.Error("Failed to get notification channel", zap.String("channelId", channelID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	createChannelTool := mcp.NewTool("signoz_create_notification_channel",
+		mcp.WithDescription(`Create a new notification channel. The receiver parameter must be a complete Prometheus Alertmanager Receiver JSON object. Required fields: name (string), plus one or more config arrays for the channel type. Supported types: slack_configs, email_configs, pagerduty_configs, webhook_configs, opsgenie_configs, msteams_configs, telegram_configs, etc. Example for Slack: {"name": "my-slack", "slack_configs": [{"api_url": "https://hooks.slack.com/...", "channel": "#alerts"}]}`),
+		mcp.WithObject("receiver", mcp.Required(), mcp.Description("Complete Prometheus Alertmanager Receiver JSON object")),
+	)
+
+	s.AddTool(createChannelTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_create_notification_channel")
+
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid arguments payload type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+
+		receiverObj, ok := args["receiver"].(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid receiver parameter type", zap.Any("type", args["receiver"]))
+			return mcp.NewToolResultError("receiver parameter must be a JSON object"), nil
+		}
+
+		receiverJSON, err := json.Marshal(receiverObj)
+		if err != nil {
+			h.logger.Error("Failed to marshal receiver object", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal receiver object: " + err.Error()), nil
+		}
+
+		client := h.GetClient(ctx)
+		result, err := client.CreateNotificationChannel(ctx, receiverJSON)
+		if err != nil {
+			h.logger.Error("Failed to create notification channel", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	updateChannelTool := mcp.NewTool("signoz_update_notification_channel",
+		mcp.WithDescription("Update an existing notification channel. IMPORTANT: The channel name cannot be changed during update. Use signoz_get_notification_channel to retrieve the current config first."),
+		mcp.WithString("channelId", mcp.Required(), mcp.Description("Notification channel ID to update")),
+		mcp.WithObject("receiver", mcp.Required(), mcp.Description("Complete Prometheus Alertmanager Receiver JSON object representing the post-update state")),
+	)
+
+	s.AddTool(updateChannelTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_update_notification_channel")
+
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid arguments payload type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+
+		channelID, ok := args["channelId"].(string)
+		if !ok {
+			h.logger.Warn("Invalid channelId parameter type", zap.Any("type", args["channelId"]))
+			return mcp.NewToolResultError(`Parameter validation failed: "channelId" must be a string. Example: {"channelId": "channel-uuid-123"}`), nil
+		}
+		if channelID == "" {
+			h.logger.Warn("Empty channelId parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "channelId" cannot be empty. Provide a valid notification channel ID`), nil
+		}
+
+		receiverObj, ok := args["receiver"].(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid receiver parameter type", zap.Any("type", args["receiver"]))
+			return mcp.NewToolResultError("receiver parameter must be a JSON object"), nil
+		}
+
+		receiverJSON, err := json.Marshal(receiverObj)
+		if err != nil {
+			h.logger.Error("Failed to marshal receiver object", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal receiver object: " + err.Error()), nil
+		}
+
+		client := h.GetClient(ctx)
+		err = client.UpdateNotificationChannel(ctx, channelID, receiverJSON)
+		if err != nil {
+			h.logger.Error("Failed to update notification channel", zap.String("channelId", channelID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText("notification channel updated"), nil
+	})
+
+	deleteChannelTool := mcp.NewTool("signoz_delete_notification_channel",
+		mcp.WithDescription("Delete a notification channel by ID. This action is irreversible. Use signoz_list_notification_channels to find channel IDs."),
+		mcp.WithString("channelId", mcp.Required(), mcp.Description("Notification channel ID to delete")),
+	)
+
+	s.AddTool(deleteChannelTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		channelID, ok := req.Params.Arguments.(map[string]any)["channelId"].(string)
+		if !ok {
+			h.logger.Warn("Invalid channelId parameter type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError(`Parameter validation failed: "channelId" must be a string. Example: {"channelId": "channel-uuid-123"}`), nil
+		}
+		if channelID == "" {
+			h.logger.Warn("Empty channelId parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "channelId" cannot be empty. Provide a valid notification channel ID. Use signoz_list_notification_channels to find channel IDs.`), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_delete_notification_channel", zap.String("channelId", channelID))
+		client := h.GetClient(ctx)
+		err := client.DeleteNotificationChannel(ctx, channelID)
+		if err != nil {
+			h.logger.Error("Failed to delete notification channel", zap.String("channelId", channelID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText("notification channel deleted"), nil
+	})
+}
+
+func (h *Handler) RegisterDowntimeScheduleHandlers(s *server.MCPServer) {
+	h.logger.Debug("Registering downtime schedule handlers")
+
+	listSchedulesTool := mcp.NewTool("signoz_list_downtime_schedules",
+		mcp.WithDescription("List all downtime schedules (maintenance windows) in SigNoz. Downtime schedules mute alerts during planned maintenance. Returns schedule names, types (fixed/recurring), status (active/upcoming/expired), and associated alert IDs."),
+		mcp.WithString("active", mcp.Description("Filter by active status: 'true' for active schedules, 'false' for inactive")),
+	)
+
+	s.AddTool(listSchedulesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_downtime_schedules")
+
+		client := h.GetClient(ctx)
+		result, err := client.ListDowntimeSchedules(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list downtime schedules", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getScheduleTool := mcp.NewTool("signoz_get_downtime_schedule",
+		mcp.WithDescription("Get details of a specific downtime schedule by ID, including the full schedule configuration (timezone, times, recurrence settings)."),
+		mcp.WithString("scheduleId", mcp.Required(), mcp.Description("Downtime schedule ID")),
+	)
+
+	s.AddTool(getScheduleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		scheduleID, ok := req.Params.Arguments.(map[string]any)["scheduleId"].(string)
+		if !ok {
+			h.logger.Warn("Invalid scheduleId parameter type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError(`Parameter validation failed: "scheduleId" must be a string. Example: {"scheduleId": "schedule-uuid-123"}`), nil
+		}
+		if scheduleID == "" {
+			h.logger.Warn("Empty scheduleId parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "scheduleId" cannot be empty. Provide a valid downtime schedule ID. Use signoz_list_downtime_schedules to find schedule IDs.`), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_get_downtime_schedule", zap.String("scheduleId", scheduleID))
+		client := h.GetClient(ctx)
+		result, err := client.GetDowntimeSchedule(ctx, scheduleID)
+		if err != nil {
+			h.logger.Error("Failed to get downtime schedule", zap.String("scheduleId", scheduleID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	createScheduleTool := mcp.NewTool("signoz_create_downtime_schedule",
+		mcp.WithDescription("Create a new downtime schedule to mute alerts during maintenance. The schedule object must include: name (string), alertIds (array of alert rule IDs to mute, or empty array for all alerts), schedule (object with timezone, and either startTime+endTime for fixed schedules, or recurrence object with startTime, duration, repeatType (daily/weekly/monthly), and repeatOn array for weekly). Example fixed: {\"name\": \"DB Migration\", \"alertIds\": [], \"schedule\": {\"timezone\": \"UTC\", \"startTime\": \"2026-02-15T02:00:00Z\", \"endTime\": \"2026-02-15T04:00:00Z\"}}. Example recurring: {\"name\": \"Weekly Window\", \"alertIds\": [], \"schedule\": {\"timezone\": \"UTC\", \"recurrence\": {\"startTime\": \"2026-02-01T22:00:00Z\", \"duration\": \"2h\", \"repeatType\": \"weekly\", \"repeatOn\": [\"tuesday\", \"thursday\"]}}}."),
+		mcp.WithObject("schedule", mcp.Required(), mcp.Description("Complete downtime schedule JSON object")),
+	)
+
+	s.AddTool(createScheduleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_create_downtime_schedule")
+
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid arguments payload type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+
+		scheduleObj, ok := args["schedule"].(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid schedule parameter type", zap.Any("type", args["schedule"]))
+			return mcp.NewToolResultError("schedule parameter must be a JSON object"), nil
+		}
+
+		scheduleJSON, err := json.Marshal(scheduleObj)
+		if err != nil {
+			h.logger.Error("Failed to marshal schedule object", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal schedule object: " + err.Error()), nil
+		}
+
+		client := h.GetClient(ctx)
+		result, err := client.CreateDowntimeSchedule(ctx, scheduleJSON)
+		if err != nil {
+			h.logger.Error("Failed to create downtime schedule", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	updateScheduleTool := mcp.NewTool("signoz_update_downtime_schedule",
+		mcp.WithDescription("Update an existing downtime schedule. Use signoz_get_downtime_schedule to retrieve current config first."),
+		mcp.WithString("scheduleId", mcp.Required(), mcp.Description("Downtime schedule ID to update")),
+		mcp.WithObject("schedule", mcp.Required(), mcp.Description("Complete downtime schedule JSON object representing the post-update state")),
+	)
+
+	s.AddTool(updateScheduleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_update_downtime_schedule")
+
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid arguments payload type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+
+		scheduleID, ok := args["scheduleId"].(string)
+		if !ok {
+			h.logger.Warn("Invalid scheduleId parameter type", zap.Any("type", args["scheduleId"]))
+			return mcp.NewToolResultError(`Parameter validation failed: "scheduleId" must be a string`), nil
+		}
+		if scheduleID == "" {
+			h.logger.Warn("Empty scheduleId parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "scheduleId" cannot be empty. Provide a valid downtime schedule ID.`), nil
+		}
+
+		scheduleObj, ok := args["schedule"].(map[string]any)
+		if !ok {
+			h.logger.Warn("Invalid schedule parameter type", zap.Any("type", args["schedule"]))
+			return mcp.NewToolResultError("schedule parameter must be a JSON object"), nil
+		}
+
+		scheduleJSON, err := json.Marshal(scheduleObj)
+		if err != nil {
+			h.logger.Error("Failed to marshal schedule object", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal schedule object: " + err.Error()), nil
+		}
+
+		client := h.GetClient(ctx)
+		err = client.UpdateDowntimeSchedule(ctx, scheduleID, scheduleJSON)
+		if err != nil {
+			h.logger.Error("Failed to update downtime schedule", zap.String("scheduleId", scheduleID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText("downtime schedule updated"), nil
+	})
+
+	deleteScheduleTool := mcp.NewTool("signoz_delete_downtime_schedule",
+		mcp.WithDescription("Delete a downtime schedule by ID. This action is irreversible."),
+		mcp.WithString("scheduleId", mcp.Required(), mcp.Description("Downtime schedule ID to delete")),
+	)
+
+	s.AddTool(deleteScheduleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		scheduleID, ok := req.Params.Arguments.(map[string]any)["scheduleId"].(string)
+		if !ok {
+			h.logger.Warn("Invalid scheduleId parameter type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError(`Parameter validation failed: "scheduleId" must be a string. Example: {"scheduleId": "schedule-uuid-123"}`), nil
+		}
+		if scheduleID == "" {
+			h.logger.Warn("Empty scheduleId parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "scheduleId" cannot be empty. Provide a valid downtime schedule ID. Use signoz_list_downtime_schedules to find schedule IDs.`), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_delete_downtime_schedule", zap.String("scheduleId", scheduleID))
+		client := h.GetClient(ctx)
+		err := client.DeleteDowntimeSchedule(ctx, scheduleID)
+		if err != nil {
+			h.logger.Error("Failed to delete downtime schedule", zap.String("scheduleId", scheduleID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText("downtime schedule deleted"), nil
+	})
+}
+
+func (h *Handler) RegisterRoutePolicyHandlers(s *server.MCPServer) {
+	listPoliciesTool := mcp.NewTool("signoz_list_route_policies",
+		mcp.WithDescription("List all alert route policies. Route policies control how alerts are routed to notification channels based on matching expressions."),
+	)
+
+	s.AddTool(listPoliciesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_route_policies")
+		client := h.GetClient(ctx)
+		result, err := client.ListRoutePolicies(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list route policies", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getPoliciesTool := mcp.NewTool("signoz_get_route_policy",
+		mcp.WithDescription("Get details of a specific alert route policy by ID."),
+		mcp.WithString("policyId", mcp.Required(), mcp.Description("Route policy ID")),
+	)
+
+	s.AddTool(getPoliciesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_route_policy")
+		policyID, ok := req.Params.Arguments.(map[string]any)["policyId"].(string)
+		if !ok || policyID == "" {
+			return mcp.NewToolResultError("policyId is required and must be a non-empty string"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetRoutePolicy(ctx, policyID)
+		if err != nil {
+			h.logger.Error("Failed to get route policy", zap.String("policyId", policyID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	createPolicyTool := mcp.NewTool("signoz_create_route_policy",
+		mcp.WithDescription("Create a new alert route policy. Route policies use expr-lang expressions to match alerts and route them to specific notification channels. Fields: name (string), expression (expr-lang string e.g. 'severity == \"critical\"'), channels (array of channel IDs), description (optional string), tags (optional array)."),
+		mcp.WithObject("policy", mcp.Required(), mcp.Description("Route policy JSON object with name, expression, channels, and optional description/tags")),
+	)
+
+	s.AddTool(createPolicyTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_create_route_policy")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		policyObj, ok := args["policy"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("policy parameter must be a JSON object"), nil
+		}
+		policyJSON, err := json.Marshal(policyObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal policy: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.CreateRoutePolicy(ctx, policyJSON)
+		if err != nil {
+			h.logger.Error("Failed to create route policy", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	updatePolicyTool := mcp.NewTool("signoz_update_route_policy",
+		mcp.WithDescription("Update an existing alert route policy. Use signoz_get_route_policy to retrieve current config first."),
+		mcp.WithString("policyId", mcp.Required(), mcp.Description("Route policy ID to update")),
+		mcp.WithObject("policy", mcp.Required(), mcp.Description("Complete route policy JSON object representing the post-update state")),
+	)
+
+	s.AddTool(updatePolicyTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_update_route_policy")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		policyID, ok := args["policyId"].(string)
+		if !ok || policyID == "" {
+			return mcp.NewToolResultError("policyId is required and must be a non-empty string"), nil
+		}
+		policyObj, ok := args["policy"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("policy parameter must be a JSON object"), nil
+		}
+		policyJSON, err := json.Marshal(policyObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal policy: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		err = client.UpdateRoutePolicy(ctx, policyID, policyJSON)
+		if err != nil {
+			h.logger.Error("Failed to update route policy", zap.String("policyId", policyID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText("route policy updated"), nil
+	})
+
+	deletePolicyTool := mcp.NewTool("signoz_delete_route_policy",
+		mcp.WithDescription("Delete an alert route policy by ID. This action is irreversible."),
+		mcp.WithString("policyId", mcp.Required(), mcp.Description("Route policy ID to delete")),
+	)
+
+	s.AddTool(deletePolicyTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		policyID, ok := req.Params.Arguments.(map[string]any)["policyId"].(string)
+		if !ok || policyID == "" {
+			return mcp.NewToolResultError("policyId is required and must be a non-empty string"), nil
+		}
+		h.logger.Debug("Tool called: signoz_delete_route_policy", zap.String("policyId", policyID))
+		client := h.GetClient(ctx)
+		err := client.DeleteRoutePolicy(ctx, policyID)
+		if err != nil {
+			h.logger.Error("Failed to delete route policy", zap.String("policyId", policyID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText("route policy deleted"), nil
+	})
+}
+
+func (h *Handler) RegisterDependencyGraphHandlers(s *server.MCPServer) {
+	depGraphTool := mcp.NewTool("signoz_get_dependency_graph",
+		mcp.WithDescription("Get the service dependency graph showing relationships between services. Requires start and end timestamps as string nanoseconds, and optional tags for filtering."),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Query object with 'start' (string nanosecond timestamp), 'end' (string nanosecond timestamp), and optional 'tags' array")),
+	)
+
+	s.AddTool(depGraphTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_dependency_graph")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		queryObj, ok := args["query"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("query parameter must be a JSON object with start and end timestamps"), nil
+		}
+		for _, key := range []string{"start", "end"} {
+			if v, exists := queryObj[key]; exists {
+				if num, isNum := v.(float64); isNum {
+					queryObj[key] = fmt.Sprintf("%.0f", num)
+				}
+			}
+		}
+		queryJSON, err := json.Marshal(queryObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal query: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetDependencyGraph(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to get dependency graph", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+}
+
+func (h *Handler) RegisterTTLSettingsHandlers(s *server.MCPServer) {
+	getTTLTool := mcp.NewTool("signoz_get_ttl_settings",
+		mcp.WithDescription("Get current data retention (TTL) settings. Fetches all signal types (metrics, traces, logs) and returns combined results."),
+	)
+
+	s.AddTool(getTTLTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_ttl_settings")
+		client := h.GetClient(ctx)
+		types := []string{"metrics", "traces", "logs"}
+		combined := make(map[string]json.RawMessage)
+		for _, t := range types {
+			result, err := client.GetTTLSettings(ctx, t)
+			if err != nil {
+				h.logger.Error("Failed to get TTL settings", zap.String("type", t), zap.Error(err))
+				return mcp.NewToolResultError("failed to get TTL for " + t + ": " + err.Error()), nil
+			}
+			combined[t] = result
+		}
+		out, err := json.Marshal(combined)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal combined TTL: " + err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(out)), nil
+	})
+
+	setTTLTool := mcp.NewTool("signoz_set_ttl_settings",
+		mcp.WithDescription("Set data retention (TTL) for a specific signal type. Duration format examples: '720h' (30 days), '2160h' (90 days)."),
+		mcp.WithString("type", mcp.Required(), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'")),
+		mcp.WithString("duration", mcp.Required(), mcp.Description("Retention duration in Go duration format, e.g. '720h' for 30 days")),
+	)
+
+	s.AddTool(setTTLTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_set_ttl_settings")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		signalType, ok := args["type"].(string)
+		if !ok || signalType == "" {
+			return mcp.NewToolResultError("type is required (metrics, traces, or logs)"), nil
+		}
+		duration, ok := args["duration"].(string)
+		if !ok || duration == "" {
+			return mcp.NewToolResultError("duration is required (e.g. '720h')"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.SetTTLSettings(ctx, signalType, duration)
+		if err != nil {
+			h.logger.Error("Failed to set TTL settings", zap.String("type", signalType), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getTTLV2Tool := mcp.NewTool("signoz_get_ttl_settings_v2",
+		mcp.WithDescription("Get data retention (TTL) settings using V2 API with support for custom retention rules per signal type."),
+	)
+
+	s.AddTool(getTTLV2Tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_ttl_settings_v2")
+		client := h.GetClient(ctx)
+		result, err := client.GetTTLSettingsV2(ctx)
+		if err != nil {
+			h.logger.Error("Failed to get TTL settings V2", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	setTTLV2Tool := mcp.NewTool("signoz_set_ttl_settings_v2",
+		mcp.WithDescription("Set data retention (TTL) using V2 API with custom retention rules. Supports per-signal-type configuration with cold storage settings."),
+		mcp.WithObject("settings", mcp.Required(), mcp.Description("TTL settings V2 JSON object with custom retention rules")),
+	)
+
+	s.AddTool(setTTLV2Tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_set_ttl_settings_v2")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		settingsObj, ok := args["settings"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("settings parameter must be a JSON object"), nil
+		}
+		settingsJSON, err := json.Marshal(settingsObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal settings: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.SetTTLSettingsV2(ctx, settingsJSON)
+		if err != nil {
+			h.logger.Error("Failed to set TTL settings V2", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+}
+
+func (h *Handler) RegisterInfraMetricsHandlers(s *server.MCPServer) {
+	listInfraTool := mcp.NewTool("signoz_list_infra_resources",
+		mcp.WithDescription("List infrastructure resources of a given type. Supported types: hosts, processes, pods, pvcs, nodes, namespaces, clusters, deployments, daemonsets, statefulsets, jobs. The query body should include filters, groupBy, orderBy, offset, limit fields."),
+		mcp.WithString("resourceType", mcp.Required(), mcp.Description("Resource type: hosts, processes, pods, pvcs, nodes, namespaces, clusters, deployments, daemonsets, statefulsets, or jobs")),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Query object with filters, groupBy, orderBy, offset, limit")),
+	)
+
+	s.AddTool(listInfraTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_infra_resources")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		resourceType, ok := args["resourceType"].(string)
+		if !ok || resourceType == "" {
+			return mcp.NewToolResultError("resourceType is required"), nil
+		}
+		queryObj, ok := args["query"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("query parameter must be a JSON object"), nil
+		}
+		queryJSON, err := json.Marshal(queryObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal query: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.ListInfraResources(ctx, resourceType, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to list infra resources", zap.String("resourceType", resourceType), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	attrKeysTool := mcp.NewTool("signoz_get_infra_attribute_keys",
+		mcp.WithDescription("Get available attribute keys for an infrastructure resource type. Use this to discover filterable/groupable attributes. Supported types: hosts, processes, pods, pvcs, nodes, namespaces, clusters, deployments, daemonsets, statefulsets, jobs."),
+		mcp.WithString("resourceType", mcp.Required(), mcp.Description("Resource type: hosts, processes, pods, pvcs, nodes, namespaces, clusters, deployments, daemonsets, statefulsets, or jobs")),
+	)
+
+	s.AddTool(attrKeysTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_infra_attribute_keys")
+		resourceType, ok := req.Params.Arguments.(map[string]any)["resourceType"].(string)
+		if !ok || resourceType == "" {
+			return mcp.NewToolResultError("resourceType is required"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetInfraAttributeKeys(ctx, resourceType)
+		if err != nil {
+			h.logger.Error("Failed to get infra attribute keys", zap.String("resourceType", resourceType), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	attrValuesTool := mcp.NewTool("signoz_get_infra_attribute_values",
+		mcp.WithDescription("Get available attribute values for an infrastructure resource type. Use this to discover possible values for filtering. Supported types: hosts, processes, pods, pvcs, nodes, namespaces, clusters, deployments, daemonsets, statefulsets, jobs."),
+		mcp.WithString("resourceType", mcp.Required(), mcp.Description("Resource type: hosts, processes, pods, pvcs, nodes, namespaces, clusters, deployments, daemonsets, statefulsets, or jobs")),
+	)
+
+	s.AddTool(attrValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_infra_attribute_values")
+		resourceType, ok := req.Params.Arguments.(map[string]any)["resourceType"].(string)
+		if !ok || resourceType == "" {
+			return mcp.NewToolResultError("resourceType is required"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetInfraAttributeValues(ctx, resourceType)
+		if err != nil {
+			h.logger.Error("Failed to get infra attribute values", zap.String("resourceType", resourceType), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+}
+
+func (h *Handler) RegisterLogsPipelinesHandlers(s *server.MCPServer) {
+	getPipelinesTool := mcp.NewTool("signoz_get_logs_pipelines",
+		mcp.WithDescription("Get logs processing pipelines configuration. Returns pipeline definitions including processors, filters, and routing rules."),
+		mcp.WithString("version", mcp.Required(), mcp.Description("Pipeline config version to retrieve (e.g. 'latest' or a specific version number)")),
+	)
+
+	s.AddTool(getPipelinesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_logs_pipelines")
+		version, ok := req.Params.Arguments.(map[string]any)["version"].(string)
+		if !ok || version == "" {
+			return mcp.NewToolResultError("version is required"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetLogsPipelines(ctx, version)
+		if err != nil {
+			h.logger.Error("Failed to get logs pipelines", zap.String("version", version), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	savePipelinesTool := mcp.NewTool("signoz_save_logs_pipelines",
+		mcp.WithDescription("Save/update logs processing pipelines configuration. Replaces the entire pipeline config."),
+		mcp.WithObject("pipelines", mcp.Required(), mcp.Description("Complete pipelines configuration JSON object")),
+	)
+
+	s.AddTool(savePipelinesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_save_logs_pipelines")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		pipelinesObj, ok := args["pipelines"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("pipelines parameter must be a JSON object"), nil
+		}
+		pipelinesJSON, err := json.Marshal(pipelinesObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal pipelines: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.SaveLogsPipelines(ctx, pipelinesJSON)
+		if err != nil {
+			h.logger.Error("Failed to save logs pipelines", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	previewPipelineTool := mcp.NewTool("signoz_preview_logs_pipeline",
+		mcp.WithDescription("Preview the effect of a logs pipeline on sample log data without saving. Useful for testing pipeline transformations."),
+		mcp.WithObject("preview", mcp.Required(), mcp.Description("Preview request JSON with pipeline config and sample logs")),
+	)
+
+	s.AddTool(previewPipelineTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_preview_logs_pipeline")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		previewObj, ok := args["preview"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("preview parameter must be a JSON object"), nil
+		}
+		previewJSON, err := json.Marshal(previewObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal preview: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.PreviewLogsPipeline(ctx, previewJSON)
+		if err != nil {
+			h.logger.Error("Failed to preview logs pipeline", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+}
+
+func (h *Handler) RegisterIntegrationsHandlers(s *server.MCPServer) {
+	listIntegrationsTool := mcp.NewTool("signoz_list_integrations",
+		mcp.WithDescription("List all available integrations in SigNoz. Returns integration metadata including name, description, and installation status."),
+	)
+
+	s.AddTool(listIntegrationsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_integrations")
+		client := h.GetClient(ctx)
+		result, err := client.ListIntegrations(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list integrations", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getIntegrationTool := mcp.NewTool("signoz_get_integration",
+		mcp.WithDescription("Get details of a specific integration by ID, including configuration options and current status."),
+		mcp.WithString("integrationId", mcp.Required(), mcp.Description("Integration ID")),
+	)
+
+	s.AddTool(getIntegrationTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_integration")
+		integrationID, ok := req.Params.Arguments.(map[string]any)["integrationId"].(string)
+		if !ok || integrationID == "" {
+			return mcp.NewToolResultError("integrationId is required"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetIntegration(ctx, integrationID)
+		if err != nil {
+			h.logger.Error("Failed to get integration", zap.String("integrationId", integrationID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	installIntegrationTool := mcp.NewTool("signoz_install_integration",
+		mcp.WithDescription("Install an integration. Some integrations may require configuration parameters."),
+		mcp.WithString("integrationId", mcp.Required(), mcp.Description("Integration ID to install")),
+		mcp.WithObject("config", mcp.Required(), mcp.Description("Installation configuration JSON (may be empty object {} if no config needed)")),
+	)
+
+	s.AddTool(installIntegrationTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_install_integration")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		integrationID, ok := args["integrationId"].(string)
+		if !ok || integrationID == "" {
+			return mcp.NewToolResultError("integrationId is required"), nil
+		}
+		configObj, ok := args["config"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("config parameter must be a JSON object"), nil
+		}
+		configJSON, err := json.Marshal(configObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal config: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.InstallIntegration(ctx, integrationID, configJSON)
+		if err != nil {
+			h.logger.Error("Failed to install integration", zap.String("integrationId", integrationID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	uninstallIntegrationTool := mcp.NewTool("signoz_uninstall_integration",
+		mcp.WithDescription("Uninstall an integration by ID. This action is irreversible."),
+		mcp.WithString("integrationId", mcp.Required(), mcp.Description("Integration ID to uninstall")),
+	)
+
+	s.AddTool(uninstallIntegrationTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_uninstall_integration")
+		integrationID, ok := req.Params.Arguments.(map[string]any)["integrationId"].(string)
+		if !ok || integrationID == "" {
+			return mcp.NewToolResultError("integrationId is required"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.UninstallIntegration(ctx, integrationID)
+		if err != nil {
+			h.logger.Error("Failed to uninstall integration", zap.String("integrationId", integrationID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	connectionStatusTool := mcp.NewTool("signoz_get_integration_connection_status",
+		mcp.WithDescription("Check the connection status of an installed integration. Use this to verify if an integration is properly connected and sending data."),
+		mcp.WithString("integrationId", mcp.Required(), mcp.Description("Integration ID to check connection status")),
+	)
+
+	s.AddTool(connectionStatusTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_integration_connection_status")
+		integrationID, ok := req.Params.Arguments.(map[string]any)["integrationId"].(string)
+		if !ok || integrationID == "" {
+			return mcp.NewToolResultError("integrationId is required"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetIntegrationConnectionStatus(ctx, integrationID)
+		if err != nil {
+			h.logger.Error("Failed to get integration connection status", zap.String("integrationId", integrationID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+}
+
+func (h *Handler) RegisterApdexSettingsHandlers(s *server.MCPServer) {
+	getApdexTool := mcp.NewTool("signoz_get_apdex_settings",
+		mcp.WithDescription("Get Apdex (Application Performance Index) threshold settings for services. Returns per-service thresholds and excluded status codes."),
+	)
+
+	s.AddTool(getApdexTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_apdex_settings")
+		client := h.GetClient(ctx)
+		result, err := client.GetApdexSettings(ctx)
+		if err != nil {
+			h.logger.Error("Failed to get apdex settings", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	setApdexTool := mcp.NewTool("signoz_set_apdex_settings",
+		mcp.WithDescription("Set Apdex threshold settings for a service. Fields: serviceName (string), threshold (float, e.g. 0.5 for 500ms), excludeStatusCodes (optional array of HTTP status codes to exclude)."),
+		mcp.WithObject("settings", mcp.Required(), mcp.Description("Apdex settings JSON with serviceName, threshold, and optional excludeStatusCodes")),
+	)
+
+	s.AddTool(setApdexTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_set_apdex_settings")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		settingsObj, ok := args["settings"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("settings parameter must be a JSON object"), nil
+		}
+		settingsJSON, err := json.Marshal(settingsObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal settings: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.SetApdexSettings(ctx, settingsJSON)
+		if err != nil {
+			h.logger.Error("Failed to set apdex settings", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+}
+
+func (h *Handler) RegisterUserManagementHandlers(s *server.MCPServer) {
+	listUsersTool := mcp.NewTool("signoz_list_users",
+		mcp.WithDescription("List all users in the SigNoz organization."),
+	)
+	s.AddTool(listUsersTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_users")
+		client := h.GetClient(ctx)
+		result, err := client.ListUsers(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list users", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getUserTool := mcp.NewTool("signoz_get_user",
+		mcp.WithDescription("Get details of a specific user by ID."),
+		mcp.WithString("userId", mcp.Required(), mcp.Description("User ID")),
+	)
+	s.AddTool(getUserTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_user")
+		userID, ok := req.Params.Arguments.(map[string]any)["userId"].(string)
+		if !ok || userID == "" {
+			return mcp.NewToolResultError("userId is required"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetUser(ctx, userID)
+		if err != nil {
+			h.logger.Error("Failed to get user", zap.String("userId", userID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	updateUserTool := mcp.NewTool("signoz_update_user",
+		mcp.WithDescription("Update a user's profile. Fields: name (string), role (string), organizationId (string)."),
+		mcp.WithString("userId", mcp.Required(), mcp.Description("User ID to update")),
+		mcp.WithObject("user", mcp.Required(), mcp.Description("User update JSON with fields to modify")),
+	)
+	s.AddTool(updateUserTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_update_user")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		userID, ok := args["userId"].(string)
+		if !ok || userID == "" {
+			return mcp.NewToolResultError("userId is required"), nil
+		}
+		userObj, ok := args["user"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("user parameter must be a JSON object"), nil
+		}
+		userJSON, err := json.Marshal(userObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal user: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.UpdateUser(ctx, userID, userJSON)
+		if err != nil {
+			h.logger.Error("Failed to update user", zap.String("userId", userID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	deleteUserTool := mcp.NewTool("signoz_delete_user",
+		mcp.WithDescription("Delete a user by ID. This action is irreversible."),
+		mcp.WithString("userId", mcp.Required(), mcp.Description("User ID to delete")),
+	)
+	s.AddTool(deleteUserTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		userID, ok := req.Params.Arguments.(map[string]any)["userId"].(string)
+		if !ok || userID == "" {
+			return mcp.NewToolResultError("userId is required"), nil
+		}
+		h.logger.Debug("Tool called: signoz_delete_user", zap.String("userId", userID))
+		client := h.GetClient(ctx)
+		err := client.DeleteUser(ctx, userID)
+		if err != nil {
+			h.logger.Error("Failed to delete user", zap.String("userId", userID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText("user deleted"), nil
+	})
+
+	listInvitesTool := mcp.NewTool("signoz_list_invites",
+		mcp.WithDescription("List all pending user invitations."),
+	)
+	s.AddTool(listInvitesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_invites")
+		client := h.GetClient(ctx)
+		result, err := client.ListInvites(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list invites", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	createInviteTool := mcp.NewTool("signoz_create_invite",
+		mcp.WithDescription("Invite a new user to the SigNoz organization. Fields: email (string, required), name (string), role (string, e.g. 'ADMIN', 'EDITOR', 'VIEWER')."),
+		mcp.WithObject("invite", mcp.Required(), mcp.Description("Invite JSON with email, name, and role")),
+	)
+	s.AddTool(createInviteTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_create_invite")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		inviteObj, ok := args["invite"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invite parameter must be a JSON object"), nil
+		}
+		inviteJSON, err := json.Marshal(inviteObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal invite: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.CreateInvite(ctx, inviteJSON)
+		if err != nil {
+			h.logger.Error("Failed to create invite", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	revokeInviteTool := mcp.NewTool("signoz_revoke_invite",
+		mcp.WithDescription("Revoke a pending user invitation by ID."),
+		mcp.WithString("inviteId", mcp.Required(), mcp.Description("Invite ID to revoke")),
+	)
+	s.AddTool(revokeInviteTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		inviteID, ok := req.Params.Arguments.(map[string]any)["inviteId"].(string)
+		if !ok || inviteID == "" {
+			return mcp.NewToolResultError("inviteId is required"), nil
+		}
+		h.logger.Debug("Tool called: signoz_revoke_invite", zap.String("inviteId", inviteID))
+		client := h.GetClient(ctx)
+		err := client.RevokeInvite(ctx, inviteID)
+		if err != nil {
+			h.logger.Error("Failed to revoke invite", zap.String("inviteId", inviteID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText("invite revoked"), nil
+	})
+
+	listPATsTool := mcp.NewTool("signoz_list_pats",
+		mcp.WithDescription("List all Personal Access Tokens (PATs)."),
+	)
+	s.AddTool(listPATsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_pats")
+		client := h.GetClient(ctx)
+		result, err := client.ListPATs(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list PATs", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	createPATTool := mcp.NewTool("signoz_create_pat",
+		mcp.WithDescription("Create a new Personal Access Token. Fields: name (string), role (string), expiresAt (optional, Unix timestamp)."),
+		mcp.WithObject("pat", mcp.Required(), mcp.Description("PAT creation JSON with name, role, and optional expiresAt")),
+	)
+	s.AddTool(createPATTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_create_pat")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		patObj, ok := args["pat"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("pat parameter must be a JSON object"), nil
+		}
+		patJSON, err := json.Marshal(patObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal PAT: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.CreatePAT(ctx, patJSON)
+		if err != nil {
+			h.logger.Error("Failed to create PAT", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	updatePATTool := mcp.NewTool("signoz_update_pat",
+		mcp.WithDescription("Update an existing Personal Access Token."),
+		mcp.WithString("patId", mcp.Required(), mcp.Description("PAT ID to update")),
+		mcp.WithObject("pat", mcp.Required(), mcp.Description("PAT update JSON with fields to modify")),
+	)
+	s.AddTool(updatePATTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_update_pat")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		patID, ok := args["patId"].(string)
+		if !ok || patID == "" {
+			return mcp.NewToolResultError("patId is required"), nil
+		}
+		patObj, ok := args["pat"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("pat parameter must be a JSON object"), nil
+		}
+		patJSON, err := json.Marshal(patObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal PAT: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.UpdatePAT(ctx, patID, patJSON)
+		if err != nil {
+			h.logger.Error("Failed to update PAT", zap.String("patId", patID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	revokePATTool := mcp.NewTool("signoz_revoke_pat",
+		mcp.WithDescription("Revoke (delete) a Personal Access Token by ID. This action is irreversible."),
+		mcp.WithString("patId", mcp.Required(), mcp.Description("PAT ID to revoke")),
+	)
+	s.AddTool(revokePATTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		patID, ok := req.Params.Arguments.(map[string]any)["patId"].(string)
+		if !ok || patID == "" {
+			return mcp.NewToolResultError("patId is required"), nil
+		}
+		h.logger.Debug("Tool called: signoz_revoke_pat", zap.String("patId", patID))
+		client := h.GetClient(ctx)
+		err := client.RevokePAT(ctx, patID)
+		if err != nil {
+			h.logger.Error("Failed to revoke PAT", zap.String("patId", patID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText("PAT revoked"), nil
+	})
+}
+
+func (h *Handler) RegisterRoleManagementHandlers(s *server.MCPServer) {
+	listRolesTool := mcp.NewTool("signoz_list_roles",
+		mcp.WithDescription("List all roles in the SigNoz organization."),
+	)
+	s.AddTool(listRolesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_roles")
+		client := h.GetClient(ctx)
+		result, err := client.ListRoles(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list roles", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getRoleTool := mcp.NewTool("signoz_get_role",
+		mcp.WithDescription("Get details of a specific role by ID."),
+		mcp.WithString("roleId", mcp.Required(), mcp.Description("Role ID")),
+	)
+	s.AddTool(getRoleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_role")
+		roleID, ok := req.Params.Arguments.(map[string]any)["roleId"].(string)
+		if !ok || roleID == "" {
+			return mcp.NewToolResultError("roleId is required"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetRole(ctx, roleID)
+		if err != nil {
+			h.logger.Error("Failed to get role", zap.String("roleId", roleID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	createRoleTool := mcp.NewTool("signoz_create_role",
+		mcp.WithDescription("Create a new role with specified permissions."),
+		mcp.WithObject("role", mcp.Required(), mcp.Description("Role JSON with name and permissions configuration")),
+	)
+	s.AddTool(createRoleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_create_role")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		roleObj, ok := args["role"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("role parameter must be a JSON object"), nil
+		}
+		roleJSON, err := json.Marshal(roleObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal role: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.CreateRole(ctx, roleJSON)
+		if err != nil {
+			h.logger.Error("Failed to create role", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	updateRoleTool := mcp.NewTool("signoz_update_role",
+		mcp.WithDescription("Update an existing role. Uses PATCH method — only provided fields are modified."),
+		mcp.WithString("roleId", mcp.Required(), mcp.Description("Role ID to update")),
+		mcp.WithObject("role", mcp.Required(), mcp.Description("Partial role JSON with fields to modify")),
+	)
+	s.AddTool(updateRoleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_update_role")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		roleID, ok := args["roleId"].(string)
+		if !ok || roleID == "" {
+			return mcp.NewToolResultError("roleId is required"), nil
+		}
+		roleObj, ok := args["role"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("role parameter must be a JSON object"), nil
+		}
+		roleJSON, err := json.Marshal(roleObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal role: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.UpdateRole(ctx, roleID, roleJSON)
+		if err != nil {
+			h.logger.Error("Failed to update role", zap.String("roleId", roleID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	deleteRoleTool := mcp.NewTool("signoz_delete_role",
+		mcp.WithDescription("Delete a role by ID. This action is irreversible. Ensure no users are assigned this role before deleting."),
+		mcp.WithString("roleId", mcp.Required(), mcp.Description("Role ID to delete")),
+	)
+	s.AddTool(deleteRoleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		roleID, ok := req.Params.Arguments.(map[string]any)["roleId"].(string)
+		if !ok || roleID == "" {
+			return mcp.NewToolResultError("roleId is required"), nil
+		}
+		h.logger.Debug("Tool called: signoz_delete_role", zap.String("roleId", roleID))
+		client := h.GetClient(ctx)
+		err := client.DeleteRole(ctx, roleID)
+		if err != nil {
+			h.logger.Error("Failed to delete role", zap.String("roleId", roleID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText("role deleted"), nil
+	})
+}
+
+func (h *Handler) RegisterCloudIntegrationsHandlers(s *server.MCPServer) {
+	listAccountsTool := mcp.NewTool("signoz_list_cloud_accounts",
+		mcp.WithDescription("List all connected cloud provider accounts. Currently supports AWS."),
+		mcp.WithString("cloudProvider", mcp.Required(), mcp.Description("Cloud provider: 'aws'")),
+	)
+	s.AddTool(listAccountsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_cloud_accounts")
+		provider, ok := req.Params.Arguments.(map[string]any)["cloudProvider"].(string)
+		if !ok || provider == "" {
+			return mcp.NewToolResultError("cloudProvider is required (e.g. 'aws')"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.ListCloudAccounts(ctx, provider)
+		if err != nil {
+			h.logger.Error("Failed to list cloud accounts", zap.String("provider", provider), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getAccountTool := mcp.NewTool("signoz_get_cloud_account",
+		mcp.WithDescription("Get details of a specific cloud provider account."),
+		mcp.WithString("cloudProvider", mcp.Required(), mcp.Description("Cloud provider: 'aws'")),
+		mcp.WithString("accountId", mcp.Required(), mcp.Description("Cloud account ID")),
+	)
+	s.AddTool(getAccountTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_cloud_account")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		provider, ok := args["cloudProvider"].(string)
+		if !ok || provider == "" {
+			return mcp.NewToolResultError("cloudProvider is required"), nil
+		}
+		accountID, ok := args["accountId"].(string)
+		if !ok || accountID == "" {
+			return mcp.NewToolResultError("accountId is required"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetCloudAccount(ctx, provider, accountID)
+		if err != nil {
+			h.logger.Error("Failed to get cloud account", zap.String("provider", provider), zap.String("accountId", accountID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	createAccountTool := mcp.NewTool("signoz_create_cloud_account",
+		mcp.WithDescription("Connect a new cloud provider account for monitoring. For AWS: provide roleArn and externalId."),
+		mcp.WithString("cloudProvider", mcp.Required(), mcp.Description("Cloud provider: 'aws'")),
+		mcp.WithObject("account", mcp.Required(), mcp.Description("Account config JSON (e.g. for AWS: {roleArn, externalId})")),
+	)
+	s.AddTool(createAccountTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_create_cloud_account")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		provider, ok := args["cloudProvider"].(string)
+		if !ok || provider == "" {
+			return mcp.NewToolResultError("cloudProvider is required"), nil
+		}
+		accountObj, ok := args["account"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("account parameter must be a JSON object"), nil
+		}
+		accountJSON, err := json.Marshal(accountObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal account: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.CreateCloudAccount(ctx, provider, accountJSON)
+		if err != nil {
+			h.logger.Error("Failed to create cloud account", zap.String("provider", provider), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	updateAccountTool := mcp.NewTool("signoz_update_cloud_account",
+		mcp.WithDescription("Update a cloud provider account configuration."),
+		mcp.WithString("cloudProvider", mcp.Required(), mcp.Description("Cloud provider: 'aws'")),
+		mcp.WithString("accountId", mcp.Required(), mcp.Description("Cloud account ID to update")),
+		mcp.WithObject("account", mcp.Required(), mcp.Description("Updated account config JSON")),
+	)
+	s.AddTool(updateAccountTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_update_cloud_account")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		provider, ok := args["cloudProvider"].(string)
+		if !ok || provider == "" {
+			return mcp.NewToolResultError("cloudProvider is required"), nil
+		}
+		accountID, ok := args["accountId"].(string)
+		if !ok || accountID == "" {
+			return mcp.NewToolResultError("accountId is required"), nil
+		}
+		accountObj, ok := args["account"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("account parameter must be a JSON object"), nil
+		}
+		accountJSON, err := json.Marshal(accountObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal account: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.UpdateCloudAccount(ctx, provider, accountID, accountJSON)
+		if err != nil {
+			h.logger.Error("Failed to update cloud account", zap.String("provider", provider), zap.String("accountId", accountID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	deleteAccountTool := mcp.NewTool("signoz_delete_cloud_account",
+		mcp.WithDescription("Delete a cloud provider account connection. This action is irreversible."),
+		mcp.WithString("cloudProvider", mcp.Required(), mcp.Description("Cloud provider: 'aws'")),
+		mcp.WithString("accountId", mcp.Required(), mcp.Description("Cloud account ID to delete")),
+	)
+	s.AddTool(deleteAccountTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		provider, ok := args["cloudProvider"].(string)
+		if !ok || provider == "" {
+			return mcp.NewToolResultError("cloudProvider is required"), nil
+		}
+		accountID, ok := args["accountId"].(string)
+		if !ok || accountID == "" {
+			return mcp.NewToolResultError("accountId is required"), nil
+		}
+		h.logger.Debug("Tool called: signoz_delete_cloud_account", zap.String("provider", provider), zap.String("accountId", accountID))
+		client := h.GetClient(ctx)
+		err := client.DeleteCloudAccount(ctx, provider, accountID)
+		if err != nil {
+			h.logger.Error("Failed to delete cloud account", zap.String("provider", provider), zap.String("accountId", accountID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText("cloud account deleted"), nil
+	})
+
+	accountServicesTool := mcp.NewTool("signoz_get_cloud_account_services",
+		mcp.WithDescription("Get connected services for a cloud provider account. Shows which AWS services are sending data."),
+		mcp.WithString("cloudProvider", mcp.Required(), mcp.Description("Cloud provider: 'aws'")),
+		mcp.WithString("accountId", mcp.Required(), mcp.Description("Cloud account ID")),
+	)
+	s.AddTool(accountServicesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_cloud_account_services")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		provider, ok := args["cloudProvider"].(string)
+		if !ok || provider == "" {
+			return mcp.NewToolResultError("cloudProvider is required"), nil
+		}
+		accountID, ok := args["accountId"].(string)
+		if !ok || accountID == "" {
+			return mcp.NewToolResultError("accountId is required"), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetCloudAccountServices(ctx, provider, accountID)
+		if err != nil {
+			h.logger.Error("Failed to get cloud account services", zap.String("provider", provider), zap.String("accountId", accountID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+}
+
+func (h *Handler) RegisterMessagingQueuesHandlers(s *server.MCPServer) {
+	consumerLagTool := mcp.NewTool("signoz_get_kafka_consumer_lag",
+		mcp.WithDescription("Get Kafka consumer lag details for a given consumer group and topic. Returns consumer lag data including partition assignments and lag metrics. Request body should include start/end timestamps (as string nanoseconds) and variables with consumer_group and topic."),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Query JSON with start, end (Unix ms timestamps), and variables object")),
+	)
+	s.AddTool(consumerLagTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_kafka_consumer_lag")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		queryObj, ok := args["query"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("query parameter must be a JSON object"), nil
+		}
+		queryJSON, err := json.Marshal(queryObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal query: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetKafkaConsumerLagOverview(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to get Kafka consumer lag", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	partitionLatencyTool := mcp.NewTool("signoz_get_kafka_partition_latency",
+		mcp.WithDescription("Get Kafka partition latency overview. Shows per-partition latency metrics. Request body requires start, end, and variables."),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Query JSON with start, end (Unix ms timestamps), and variables object")),
+	)
+	s.AddTool(partitionLatencyTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_kafka_partition_latency")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		queryObj, ok := args["query"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("query parameter must be a JSON object"), nil
+		}
+		queryJSON, err := json.Marshal(queryObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal query: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetKafkaPartitionLatency(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to get Kafka partition latency", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	producerOverviewTool := mcp.NewTool("signoz_get_kafka_producer_overview",
+		mcp.WithDescription("Get Kafka topic throughput producer overview. Returns producer throughput data for specified topics. Request body should include start/end timestamps (as string nanoseconds) and variables with topic."),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Query JSON with start, end (Unix ms timestamps), and variables object")),
+	)
+	s.AddTool(producerOverviewTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_get_kafka_producer_overview")
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
+		queryObj, ok := args["query"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("query parameter must be a JSON object"), nil
+		}
+		queryJSON, err := json.Marshal(queryObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal query: " + err.Error()), nil
+		}
+		client := h.GetClient(ctx)
+		result, err := client.GetKafkaProducerOverview(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to get Kafka producer overview", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
 }

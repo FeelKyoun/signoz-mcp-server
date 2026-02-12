@@ -4,24 +4,37 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![MCP Version](https://img.shields.io/badge/MCP-0.37.0-orange.svg)](https://modelcontextprotocol.io)
 
-A Model Context Protocol (MCP) server that provides seamless access to SigNoz observability data through AI assistants and LLMs. This server enables natural language queries for metrics, traces, logs, alerts, dashboards, and service performance data.
+> Extended fork of [SigNoz/signoz-mcp-server](https://github.com/SigNoz/signoz-mcp-server) — expanded from 25 read-only tools to 92 full CRUD tools.
+
+A Model Context Protocol (MCP) server that provides comprehensive access to SigNoz observability data through AI assistants and LLMs. With **92 tools** covering full CRUD operations across 20+ API categories, this server enables natural language management of your entire SigNoz platform.
 
 ## 🚀 Features
 
-- **List Metric Keys**: Retrieve all available metric keys from SigNoz.
-- **Search Metric by text**: Find specific metric containing given text.
-- **List Alerts**: Get all active alerts with detailed status.
-- **Get Alert Details**: Retrieve comprehensive information about specific alert rules.
-- **Get Alert History**: Gives you timeline of an alert.
-- **Logs**: Gets log related to services, alerts, etc.
-- **Traces**: Search, analyze, get hierarchy and relationship of traces.
-- **List Dashboards**: Get dashboard summaries (name, UUID, description, tags).
-- **Get Dashboard**: Retrieve complete dashboard configurations with panels and queries.
-- **Create Dashboard**: Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. **Warning**: Requires full dashboard JSON which can consume large amounts of context window space.
-- **Update Dashboard**: Updates an existing dashboard using its UUID and a complete dashboard JSON object. Requires the entire post-update configuration and cannot accept partial patches.
-- **List Services**: Discover all services within specified time ranges.
-- **Service Top Operations**: Analyze performance metrics for specific services.
-- **Query Builder**: Generates query to get complex response.
+**92 tools** across the following categories:
+
+- **Metrics** — List and search metric keys
+- **Alerts** — Full CRUD: list, get, create, update, delete alert rules + alert history
+- **Dashboards** — Full CRUD: list, get, create, delete dashboards
+- **Services** — List services, get top operations
+- **Logs** — Saved log views, error logs, search by service, alert-related logs
+- **Traces** — Search, details, error analysis, span hierarchy
+- **Field Discovery** — Available fields and field values for traces, logs, and metrics
+- **Query Builder** — Execute SigNoz Query Builder v5 queries
+- **Saved Views** — CRUD for explorer saved views (logs/traces)
+- **Notification Channels** — Full CRUD: webhook, Slack, PagerDuty, etc.
+- **Downtime Schedules** — Full CRUD for planned maintenance windows
+- **Route Policies** — Full CRUD for alert routing policies
+- **Dependency Graph** — Service dependency visualization
+- **TTL Settings** — Get/set data retention (v1 and v2)
+- **Infrastructure Monitoring** — List hosts, pods, nodes, namespaces, clusters, etc. with attribute discovery
+- **Logs Pipelines** — Get, preview, and save log processing pipelines
+- **Integrations** — List, get, install, uninstall integrations + connection status
+- **Apdex Settings** — Get/set application performance index thresholds
+- **User Management** — List, get, update, delete users + invite management
+- **Personal Access Tokens** — List, create, update, revoke PATs
+- **Role Management** — Full CRUD for custom roles (Enterprise)
+- **Cloud Integrations** — Full CRUD for AWS/GCP/Azure cloud accounts + service discovery
+- **Messaging Queues** — Kafka consumer lag, partition latency, producer throughput
 
 ## 🏗️ Architecture
 
@@ -241,298 +254,278 @@ You can access API Key by going to Settings -> Workspace Settings -> API Key in 
 
 ### For AI Assistants & LLMs
 
-The MCP server provides the following tools that can be used through natural language:
+The MCP server provides 92 tools that can be used through natural language:
 
-#### Metrics Exploration
+#### Metrics & Services
 
 ```
 "Show me all available metrics"
 "Search for CPU related metrics"
+"List all services from the last 6 hours"
+"What are the top operations for the paymentservice?"
 ```
 
-#### Alert Monitoring
+#### Alert Management
 
 ```
 "List all active alerts"
-"Get details for alert rule ID abc123"
+"Create an alert for high CPU usage on the payment service"
+"Delete alert rule abc123"
 "Show me the history for alert rule abc123 from the last 6 hours"
-"Get logs related to alert abc456"
 ```
 
 #### Dashboard Management
 
 ```
 "List all dashboards"
+"Create a dashboard named 'API Performance' with latency widgets"
 "Show me the Host Metrics dashboard details"
-"Create a dashboard with a specified name, optional tags, and a widget visualizing a chosen metric."
 ```
 
-#### Service Analysis
+#### Log & Trace Analysis
 
 ```
-"List all services from the last 6 hours"
-"What are the top operations for the paymentservice?"
-```
-
-#### Log Analysis
-
-```
-"List all saved log views"
 "Show me error logs for the paymentservice from the last hour"
-"Search paymentservice logs for 'connection timeout' errors"
-"Get error logs with FATAL severity"
+"Search traces for the checkout service with errors"
+"Get the span hierarchy for trace xyz789"
+"Create a saved view for error logs filtered by payment service"
 ```
 
-#### Trace Analysis
+#### Notification & Routing
 
 ```
-"Show me all available trace fields"
-"Search traces for the apple service from the last hour"
-"Get details for trace ID ball123"
-"Check for  error patterns in traces from the randomservice"
-"Show me the span hierarchy for trace xyz789"
-"Find traces with errors in the last 2 hours"
-"Give me flow of this trace"
+"Set up a Slack notification channel for alerts"
+"List all notification channels"
+"Create a route policy to send INFO alerts to the dev channel"
 ```
 
-### Tool Reference
-
-#### `signoz_list_metric_keys`
-
-Lists all available metric keys from SigNoz.
-
-#### `signoz_search_metric_by_text`
-
-Searches metrics by text (uses SigNoz aggregate_attributes autocomplete).
-
-- **Parameters**: `searchText` (required) - Text to search for
-
-#### `signoz_list_alerts`
-
-Lists all active alerts from SigNoz.
-
-#### `signoz_get_alert`
-
-Gets details of a specific alert rule.
-
-- **Parameters**: `ruleId` (required) - Alert rule ID
-
-#### `signoz_list_dashboards`
-
-Lists all dashboards with summaries (name, UUID, description, tags).
-
-- **Returns**: Simplified dashboard information for better LLM processing
-
-#### `signoz_get_dashboard`
-
-Gets complete dashboard configuration.
-
-- **Parameters**: `uuid` (required) - Dashboard UUID
-
-#### `signoz_create_dashboard`
-Creates a dashboard.
-
-- **Parameters:**
-  - title (required) – Dashboard name
-  - description (optional) – Short summary of what the dashboard shows
-  - tags (optional) – List of tags
-  - layout (required) – Widget positioning grid
-  - variables (optional) – Map of variables available for use in queries
-  - widgets (required) – List of widgets added to the dashboard
-- **Returns**
-Dashboard metadata, layout array, widgets array, and stored dashboard config.
-
-### `signoz_update_dashboard`
-Updates an existing dashboard.
-
-- **Parameters**
-  - uuid (required) – Unique identifier of the dashboard to update
-  - title (required) – Dashboard name
-  - description (optional) – Short summary of what the dashboard shows
-  - tags (optional) – List of tags applied to the dashboard
-  - layout (required) – Full widget positioning grid
-  - variables (optional) – Map of variables available for use in queries
-  - widgets (required) – Complete set of widgets defining the updated dashboard
-  
-**Returns**
-A success confirmation only. No response body is provided.
-  
-#### `signoz_list_services`
-
-Lists all services within a time range.
-
-- **Parameters**:
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in nanoseconds (defaults to now)
-
-#### `signoz_get_service_top_operations`
-
-Gets top operations for a specific service.
-
-- **Parameters**:
-    - `service` (required) - Service name
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in nanoseconds (defaults to now)
-    - `tags` (optional) - JSON array of tags
-
-#### `signoz_get_alert_history`
-
-Gets alert history timeline for a specific rule.
-
-- **Parameters**:
-    - `ruleId` (required) - Alert rule ID
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start timestamp in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End timestamp in milliseconds (defaults to now)
-    - `offset` (optional) - Offset for pagination (default: 0)
-    - `limit` (optional) - Limit number of results (default: 20)
-    - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
-
-#### `signoz_list_log_views`
-
-Lists all saved log views from SigNoz.
-
-- **Returns**: Summary with name, ID, description, and query details
-
-#### `signoz_get_log_view`
-
-Gets full details of a specific log view by ID.
-
-- **Parameters**: `viewId` (required) - Log view ID
-
-#### `signoz_get_logs_for_alert`
-
-Gets logs related to a specific alert automatically.
-
-- **Parameters**:
-    - `alertId` (required) - Alert rule ID
-    - `timeRange` (optional) - Time range around alert (e.g., '1h', '30m', '2h') - default: '1h'
-    - `limit` (optional) - Maximum number of logs to return (default: 100)
-
-#### `signoz_get_error_logs`
-
-Gets logs with ERROR or FATAL severity within a time range.
-
-- **Parameters**:
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-    - `service` (optional) - Service name to filter by
-    - `limit` (optional) - Maximum number of logs to return (default: 100)
-
-#### `signoz_search_logs_by_service`
-
-Searches logs for a specific service within a time range.
-
-- **Parameters**:
-    - `service` (required) - Service name to search logs for
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-    - `severity` (optional) - Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
-    - `searchText` (optional) - Text to search for in log body
-    - `limit` (optional) - Maximum number of logs to return (default: 100)
-
-#### `signoz_get_trace_field_values`
-
-Gets available field values for trace.
-
-- **Parameters**:
-    - `fieldName` (required) - Field name to get values for (e.g., 'service.name', 'http.method')
-    - `searchText` (optional) - Search text to filter values
-
-#### `signoz_get_logs_field_values`
-
-Gets available field values for log queries.
-
-- **Parameters**:
-    - `fieldName` (required) - Field name to get values for (e.g., 'service.name')
-    - `searchText` (optional) - Search text to filter values
-
-#### `signoz_get_metrics_field_values`
-
-Gets available field values for metric queries.
-
-- **Parameters**:
-    - `fieldName` (required) - Field name to get values for
-    - `searchText` (optional) - Search text to filter values
-
-#### `signoz_get_trace_available_fields`
-
-Gets available field names for trace queries.
-
-- **Parameters**:
-    - `searchText` (optional) - Search text to filter available fields
-
-#### `signoz_get_logs_available_fields`
-
-Gets available field names for log queries.
-
-- **Parameters**:
-    - `searchText` (optional) - Search text to filter available fields
-
-#### `signoz_get_metrics_available_fields`
-
-Gets available field names for metric queries.
-
-- **Parameters**:
-    - `searchText` (optional) - Search text to filter available fields
-
-#### `signoz_search_traces_by_service`
-
-Searches traces for a specific service.
-
-- **Parameters**:
-    - `service` (required) - Service name to search traces for
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-    - `operation` (optional) - Operation name to filter by
-    - `error` (optional) - Filter by error status (true/false)
-    - `minDuration` (optional) - Minimum duration in nanoseconds
-    - `maxDuration` (optional) - Maximum duration in nanoseconds
-    - `limit` (optional) - Maximum number of traces to return (default: 100)
-
-#### `signoz_get_trace_details`
-
-Gets trace information including all spans and metadata.
-
-- **Parameters**:
-    - `traceId` (required) - Trace ID to get details for
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-    - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
-
-#### `signoz_get_trace_error_analysis`
-
-Analyzes error patterns in traces.
-
-- **Parameters**:
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-    - `service` (optional) - Service name to filter by
-- **Returns**: Traces with errors, useful for identifying patterns and affected services
-
-#### `signoz_get_trace_span_hierarchy`
-
-Gets trace span relationships and hierarchy.
-
-- **Parameters**:
-    - `traceId` (required) - Trace ID to get span hierarchy for
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-
-#### `signoz_execute_builder_query`
-
-Executes a SigNoz Query Builder v5 query.
-
-- **Parameters**: `query` (required) - Complete SigNoz Query Builder v5 JSON object
-- **Documentation**: See [SigNoz Query Builder v5 docs](https://signoz.io/docs/userguide/query-builder-v5/)
+#### Infrastructure & Integrations
+
+```
+"Show me all hosts and their CPU usage"
+"List all pods in the production namespace"
+"Install the AWS ElastiCache Redis integration"
+"What's the Kafka consumer lag for the orders topic?"
+```
+
+#### Settings & Administration
+
+```
+"Set the data retention for logs to 30 days"
+"Create a downtime schedule for weekend maintenance"
+"List all users and their roles"
+"Create a personal access token with VIEWER role"
+```
+
+### Tool Reference (92 Tools)
+
+#### Metrics (2)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_metric_keys` | List all available metric keys |
+| `signoz_search_metric_by_text` | Search metrics by text pattern |
+
+#### Alerts (6)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_alerts` | List all alert rules with status |
+| `signoz_get_alert` | Get alert rule details by ID |
+| `signoz_get_alert_history` | Get alert history timeline with pagination |
+| `signoz_create_alert_rule` | Create a new alert rule with conditions, channels, and labels |
+| `signoz_update_alert_rule` | Update an existing alert rule |
+| `signoz_delete_alert_rule` | Delete an alert rule |
+
+#### Dashboards (4)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_dashboards` | List dashboards with summaries (name, UUID, tags) |
+| `signoz_get_dashboard` | Get complete dashboard configuration by UUID |
+| `signoz_create_dashboard` | Create a new dashboard with title, layout, and widgets |
+| `signoz_delete_dashboard` | Delete a dashboard by UUID |
+
+#### Services (2)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_services` | List all services within a time range |
+| `signoz_get_service_top_operations` | Get top operations for a specific service |
+
+#### Logs (5)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_log_views` | List all saved log views with pagination |
+| `signoz_get_log_view` | Get full details of a saved log view |
+| `signoz_get_logs_for_alert` | Get logs related to a specific alert |
+| `signoz_get_error_logs` | Get ERROR/FATAL logs within a time range |
+| `signoz_search_logs_by_service` | Search logs by service, severity, and text |
+
+#### Traces (4)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_search_traces_by_service` | Search traces by service, operation, duration, error status |
+| `signoz_get_trace_details` | Get trace details including all spans |
+| `signoz_get_trace_error_analysis` | Analyze error patterns in traces |
+| `signoz_get_trace_span_hierarchy` | Get trace span parent-child relationships |
+
+#### Field Discovery (6)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_get_trace_field_values` | Get available values for a trace field |
+| `signoz_get_logs_field_values` | Get available values for a log field |
+| `signoz_get_metrics_field_values` | Get available values for a metric field |
+| `signoz_get_trace_available_fields` | List available trace field names |
+| `signoz_get_logs_available_fields` | List available log field names |
+| `signoz_get_metrics_available_fields` | List available metric field names |
+
+#### Query Builder (1)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_execute_builder_query` | Execute a SigNoz Query Builder v5 query ([docs](https://signoz.io/docs/userguide/query-builder-v5/)) |
+
+#### Saved Views (3)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_create_saved_view` | Create a saved view for logs/traces explorer |
+| `signoz_update_saved_view` | Update an existing saved view |
+| `signoz_delete_saved_view` | Delete a saved view |
+
+#### Notification Channels (5)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_notification_channels` | List all notification channels |
+| `signoz_get_notification_channel` | Get channel details by ID |
+| `signoz_create_notification_channel` | Create a channel (webhook, Slack, PagerDuty, etc.) |
+| `signoz_update_notification_channel` | Update channel configuration |
+| `signoz_delete_notification_channel` | Delete a notification channel |
+
+#### Downtime Schedules (5)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_downtime_schedules` | List all planned maintenance schedules |
+| `signoz_get_downtime_schedule` | Get schedule details by ID |
+| `signoz_create_downtime_schedule` | Create a downtime schedule with recurrence |
+| `signoz_update_downtime_schedule` | Update an existing schedule |
+| `signoz_delete_downtime_schedule` | Delete a downtime schedule |
+
+#### Route Policies (5)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_route_policies` | List all alert routing policies |
+| `signoz_get_route_policy` | Get policy details by ID |
+| `signoz_create_route_policy` | Create a routing policy with expression and channels |
+| `signoz_update_route_policy` | Update an existing routing policy |
+| `signoz_delete_route_policy` | Delete a routing policy |
+
+#### Dependency Graph (1)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_get_dependency_graph` | Get service dependency graph for a time range |
+
+#### TTL Settings (4)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_get_ttl_settings` | Get data retention settings (v1) |
+| `signoz_set_ttl_settings` | Set data retention by type: traces, logs, metrics (v1) |
+| `signoz_get_ttl_settings_v2` | Get data retention settings (v2) |
+| `signoz_set_ttl_settings_v2` | Set data retention settings (v2) |
+
+#### Infrastructure Monitoring (3)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_infra_resources` | List infra resources: hosts, pods, nodes, namespaces, clusters, deployments, etc. |
+| `signoz_get_infra_attribute_keys` | Get attribute keys for a resource type |
+| `signoz_get_infra_attribute_values` | Get attribute values for a resource type |
+
+#### Logs Pipelines (3)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_get_logs_pipelines` | Get log processing pipeline configuration |
+| `signoz_preview_logs_pipeline` | Preview pipeline effect on sample logs without saving |
+| `signoz_save_logs_pipelines` | Save log processing pipeline configuration |
+
+#### Integrations (5)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_integrations` | List all available integrations |
+| `signoz_get_integration` | Get integration details and configuration |
+| `signoz_get_integration_connection_status` | Check integration connection status |
+| `signoz_install_integration` | Install an integration with configuration |
+| `signoz_uninstall_integration` | Uninstall an integration |
+
+#### Apdex Settings (2)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_get_apdex_settings` | Get application performance index settings |
+| `signoz_set_apdex_settings` | Set apdex threshold for a service |
+
+#### User Management (7)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_users` | List all users |
+| `signoz_get_user` | Get user details by ID |
+| `signoz_update_user` | Update user name or role |
+| `signoz_delete_user` | Delete a user |
+| `signoz_list_invites` | List pending invitations |
+| `signoz_create_invite` | Invite a new user with role |
+| `signoz_revoke_invite` | Revoke a pending invitation |
+
+#### Personal Access Tokens (4)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_pats` | List all personal access tokens |
+| `signoz_create_pat` | Create a PAT with name, role, and expiration |
+| `signoz_update_pat` | Update PAT name or role |
+| `signoz_revoke_pat` | Revoke a personal access token |
+
+#### Role Management (5) — Enterprise
+
+> Requires a valid SigNoz Enterprise license.
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_roles` | List all custom roles |
+| `signoz_get_role` | Get role details by ID |
+| `signoz_create_role` | Create a custom role with permissions |
+| `signoz_update_role` | Update role permissions |
+| `signoz_delete_role` | Delete a custom role |
+
+#### Cloud Integrations (6)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_list_cloud_accounts` | List cloud accounts for a provider (AWS/GCP/Azure) |
+| `signoz_get_cloud_account` | Get cloud account status |
+| `signoz_create_cloud_account` | Connect a new cloud account |
+| `signoz_update_cloud_account` | Update cloud account configuration |
+| `signoz_delete_cloud_account` | Disconnect a cloud account |
+| `signoz_get_cloud_account_services` | List available cloud services for a provider |
+
+#### Messaging Queues — Kafka (3)
+
+| Tool | Description |
+|------|-------------|
+| `signoz_get_kafka_consumer_lag` | Get consumer lag details for a topic/consumer group |
+| `signoz_get_kafka_partition_latency` | Get partition-level latency for a topic |
+| `signoz_get_kafka_producer_overview` | Get producer throughput for a topic |
 
 ### Time Format
 
