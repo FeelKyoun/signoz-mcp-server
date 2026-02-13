@@ -197,11 +197,12 @@ For Both options use same json struct
 signoz-mcp-server/
 ├── cmd/server/           # Main application entry point
 ├── internal/
-│   ├── client/          # SigNoz API client
+│   ├── client/          # SigNoz API client (88 methods)
 │   ├── config/          # Configuration management
-│   ├── handler/tools/   # MCP tool implementations
+│   ├── handler/tools/   # MCP tool implementations (92 tools)
 │   ├── logger/          # Logging utilities
 │   └── mcp-server/      # MCP server core
+├── pkg/types/           # Shared type definitions
 ├── go.mod               # Go module dependencies
 ├── Makefile             # Build automation
 └── README.md
@@ -211,7 +212,7 @@ signoz-mcp-server/
 
 ```bash
 # Clone the repository
-git clone https://github.com/SigNoz/signoz-mcp-server.git
+git clone https://github.com/FeelKyoun/signoz-mcp-server.git
 cd signoz-mcp-server
 
 # Build the binary
@@ -598,21 +599,21 @@ Restart Claude Desktop and it will then automatically start the SigNoz MCP Serve
 
 ## 🤝 Contributing
 
-We welcome contributions!
+Contributions are welcome! This is a fork — feel free to open issues or pull requests on [this repository](https://github.com/FeelKyoun/signoz-mcp-server).
 
 ### Development Setup
 
-1. Fork the repository
+1. Clone the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests
+4. Run `go build ./...` to verify
 5. Submit a pull request
 
 ### Code Style
 
 - Follow Go best practices
 - Use meaningful variable names
-- Add comments for complex logic
 - Ensure proper error handling
+- Match existing patterns in `client.go` and `handler.go`
 
 **Made with ❤️ for the observability community**
