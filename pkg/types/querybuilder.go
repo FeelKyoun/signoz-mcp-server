@@ -1,6 +1,9 @@
 package types
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // QueryPayload is struct used as payload the Query Builder v5 JSON schema
 type QueryPayload struct {
@@ -27,7 +30,7 @@ type QuerySpec struct {
 	Signal       string        `json:"signal"`
 	StepInterval *int64        `json:"stepInterval,omitempty"`
 	Disabled     bool          `json:"disabled"`
-	Filter       *Filter       `json:"filter,omitempty"`
+	Filter       json.RawMessage `json:"filter,omitempty"`
 	Limit        int           `json:"limit"`
 	Offset       int           `json:"offset"`
 	Order        []Order       `json:"order"`
@@ -49,10 +52,6 @@ type Having struct {
 	Expression string `json:"expression"`
 }
 
-type Filter struct {
-	Expression string `json:"expression"`
-}
-
 type SelectField struct {
 	Name          string `json:"name"`
 	FieldDataType string `json:"fieldDataType"`
@@ -63,6 +62,12 @@ type SelectField struct {
 type FormatOptions struct {
 	FormatTableResultForUI bool `json:"formatTableResultForUI"`
 	FillGaps               bool `json:"fillGaps"`
+}
+
+// BuildFilterJSON creates a json.RawMessage for a filter expression string.
+func BuildFilterJSON(expression string) json.RawMessage {
+	data, _ := json.Marshal(map[string]string{"expression": expression})
+	return data
 }
 
 // Validate performs necessary validation for required fields
@@ -143,7 +148,7 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 						Name:     "A",
 						Signal:   "logs",
 						Disabled: false,
-						Filter:   &Filter{Expression: filterExpression},
+						Filter:   BuildFilterJSON(filterExpression),
 						Limit:    limit,
 						Offset:   offset,
 						Order: []Order{
@@ -182,7 +187,7 @@ func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, 
 						Name:     "A",
 						Signal:   "traces",
 						Disabled: false,
-						Filter:   &Filter{Expression: filterExpression},
+						Filter:   BuildFilterJSON(filterExpression),
 						Limit:    limit,
 						Offset:   0,
 						Order: []Order{
