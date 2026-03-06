@@ -31,27 +31,7 @@ func (m *MCPServer) Start() error {
 		zap.String("transport_mode", m.config.TransportMode))
 
 	// Register all handlers
-	m.handler.RegisterMetricsHandlers(s)
-	m.handler.RegisterAlertsHandlers(s)
-	m.handler.RegisterDashboardHandlers(s)
-	m.handler.RegisterServiceHandlers(s)
-	m.handler.RegisterQueryBuilderV5Handlers(s)
-	m.handler.RegisterLogsHandlers(s)
-	m.handler.RegisterTracesHandlers(s)
-	m.handler.RegisterSavedViewHandlers(s)
-	m.handler.RegisterNotificationChannelHandlers(s)
-	m.handler.RegisterDowntimeScheduleHandlers(s)
-	m.handler.RegisterRoutePolicyHandlers(s)
-	m.handler.RegisterDependencyGraphHandlers(s)
-	m.handler.RegisterTTLSettingsHandlers(s)
-	m.handler.RegisterInfraMetricsHandlers(s)
-	m.handler.RegisterLogsPipelinesHandlers(s)
-	m.handler.RegisterIntegrationsHandlers(s)
-	m.handler.RegisterApdexSettingsHandlers(s)
-	m.handler.RegisterUserManagementHandlers(s)
-	m.handler.RegisterRoleManagementHandlers(s)
-	m.handler.RegisterCloudIntegrationsHandlers(s)
-	m.handler.RegisterMessagingQueuesHandlers(s)
+	m.handler.RegisterAll(s)
 
 	m.logger.Info("All handlers registered successfully")
 

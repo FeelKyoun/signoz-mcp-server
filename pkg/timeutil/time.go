@@ -60,3 +60,21 @@ func GetTimestampsWithDefaults(args map[string]any, unit string) (start, end str
 
 	return start, end
 }
+
+// GetTimestampsAsInt64 returns start and end timestamps as int64 values.
+// This is a convenience wrapper around GetTimestampsWithDefaults that parses the string results.
+func GetTimestampsAsInt64(args map[string]any, unit string) (int64, int64, error) {
+	startStr, endStr := GetTimestampsWithDefaults(args, unit)
+
+	startTime, err := strconv.ParseInt(startStr, 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid start timestamp %q: %w", startStr, err)
+	}
+
+	endTime, err := strconv.ParseInt(endStr, 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid end timestamp %q: %w", endStr, err)
+	}
+
+	return startTime, endTime, nil
+}
